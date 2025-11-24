@@ -1,0 +1,25 @@
+{
+  "mode": "monitor",
+  "allowed_rules": [
+    {
+      "host": "github.com",
+      "allowed_paths": [
+        "/gordonbeeming",
+        "/login",
+        "/session"
+      ]
+    },
+    {
+      "host": "api.github.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "copilot-proxy.githubusercontent.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "objects.githubusercontent.com",
+      "allowed_paths": []
+    }
+  ]
+}
