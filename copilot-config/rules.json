@@ -1,5 +1,5 @@
 {
-  "mode": "monitor",
+  "mode": "enforce",
   "allowed_rules": [
     {
       "host": "github.com",

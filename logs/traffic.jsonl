@@ -1,0 +1,6 @@
+{"timestamp":"2025-11-24T07:53:25.544Z","action":"ALLOW","host":"github.com","path":"/","method":"HEAD","mode":"monitor","reason":"Monitor Mode"}
+{"timestamp":"2025-11-24T07:55:29.879Z","action":"ALLOW","host":"github.com","path":"/","method":"HEAD","mode":"monitor","reason":"Monitor Mode"}
+{"timestamp":"2025-11-24T07:56:04.947Z","action":"ALLOW","host":"github.com","path":"/bobby","method":"HEAD","mode":"monitor","reason":"Monitor Mode"}
+{"timestamp":"2025-11-24T07:57:50.249Z","action":"BLOCK","host":"github.com","path":"/","method":"HEAD","mode":"enforce","reason":"Path Not Allowed (Allowed: [\"/gordonbeeming\",\"/login\",\"/session\"])"}
+{"timestamp":"2025-11-24T07:58:01.592Z","action":"ALLOW","host":"github.com","path":"/gordonbeeming","method":"HEAD","mode":"enforce","reason":"Path Match"}
+{"timestamp":"2025-11-24T07:58:27.988Z","action":"ALLOW","host":"github.com","path":"/gordonbeeming/more-things","method":"HEAD","mode":"enforce","reason":"Path Match"}

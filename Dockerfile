@@ -20,7 +20,8 @@ WORKDIR /app
 RUN npm install http-mitm-proxy
 
 # 4. Copy our scripts
-COPY proxy.js /app/proxy.js
+COPY logic.js /app/logic.js
+COPY shim.js /app/shim.js
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

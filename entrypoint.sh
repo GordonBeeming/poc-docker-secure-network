@@ -21,6 +21,8 @@ iptables -P OUTPUT DROP
 
 # 1. Allow Loopback (Critical for local proxy redirection)
 iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -d 127.0.0.1 -j ACCEPT
+iptables -A OUTPUT -s 127.0.0.1 -j ACCEPT
 
 # 1.5 Allow Traffic to the Transparent Shim (58080)
 iptables -A OUTPUT -p tcp --dport 58080 -j ACCEPT
@@ -66,8 +68,13 @@ echo "🔒 Network Lock Applied (Default DENY policy active)."
 iptables -L -n -v
 
 # 2. Start the Proxy using GOSU
-gosu copilot-proxy node /app/proxy.js &
-PROXY_PID=$!
+echo "🚀 Starting Logic Proxy..."
+gosu copilot-proxy node /app/logic.js &
+LOGIC_PID=$!
+
+echo "🚀 Starting Transparent Shim..."
+gosu copilot-proxy node /app/shim.js &
+SHIM_PID=$!
 
 # 3. Wait for CA
 echo "⏳ Waiting for CA generation..."
