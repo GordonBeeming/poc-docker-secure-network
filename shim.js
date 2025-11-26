@@ -72,6 +72,14 @@ const server = net.createServer((socket) => {
                     proxySocket.setTimeout(0); // Disable timeout
                     proxySocket.write(data); // Send original ClientHello
                     
+                    // Monitor for plaintext error responses after handshake
+                    proxySocket.once('data', (firstPostHandshake) => {
+                        const str = firstPostHandshake.toString();
+                        if (str.startsWith('HTTP/')) {
+                            console.error(`❌ [Shim] Logic Proxy sent plaintext error instead of TLS: ${str.split('\r\n')[0]}`);
+                        }
+                    });
+
                     socket.pipe(proxySocket);
                     proxySocket.pipe(socket);
                     socket.resume();

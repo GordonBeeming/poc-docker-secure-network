@@ -3,7 +3,7 @@ set -e
 
 echo "🔧 Initializing Secure Environment..."
 
-# 0. Ensure Permissions
+rm -rf /ca/* # Force regeneration of CA with new settings
 chown -R copilot-proxy:copilot-proxy /logs /ca
 
 # Debug: Print User ID
@@ -87,5 +87,17 @@ cp /ca/certs/ca.pem /usr/local/share/ca-certificates/copilot-here-ca.crt
 update-ca-certificates
 
 echo "✅ Environment Ready."
+
+echo "📋 Current Configuration:"
+cat /config/rules.json || echo "No config file found."
+
+echo "🧪 Running Self-Test (curl github.com via Proxy)..."
+http_code=$(curl -I -s -o /dev/null -w "%{http_code}" https://github.com || echo "000")
+
+if [ "$http_code" -eq "200" ] || [ "$http_code" -eq "301" ] || [ "$http_code" -eq "302" ]; then
+    echo " -> ✅ Success! (HTTP $http_code)"
+else
+    echo " -> ❌ Failed! (HTTP $http_code)"
+fi
 
 exec "$@"

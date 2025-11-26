@@ -1,4 +1,4 @@
-const MitmProxy = require('http-mitm-proxy');
+const MitmProxy = require('@bjowes/http-mitm-proxy');
 const fs = require('fs');
 const dns = require('dns');
 
@@ -48,6 +48,11 @@ proxy.onError((ctx, err) => {
     if (err && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) return;
     console.error('Proxy Error:', err);
 });
+
+proxy.onCertificateMissing = (ctx, files, callback) => {
+    console.log('[Logic] Generating certificate for:', ctx.hostname);
+    return callback(null, files);
+};
 
 proxy.onRequest((ctx, callback) => {
     const req = ctx.clientToProxyRequest;
