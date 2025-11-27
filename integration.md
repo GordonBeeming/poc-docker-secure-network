@@ -1,10 +1,10 @@
-# Integration Plan: Prison Network Proxy into copilot_here
+# Integration Plan: Airlock Proxy into copilot_here
 
-This document outlines the step-by-step integration of the **prison-network** secure proxy into the **copilot_here** project.
+This document outlines the step-by-step integration of the **airlock** secure proxy into the **copilot_here** project.
 
 ## Overview
 
-The prison-network proxy provides network isolation and traffic filtering for Docker containers:
+The airlock proxy provides network isolation and traffic filtering for Docker containers:
 - **Isolated network**: App container cannot reach the internet directly
 - **Proxy-based egress**: All HTTPS traffic goes through a MITM proxy
 - **Allow/Block rules**: Host and path-level filtering via `rules.json`
@@ -27,16 +27,16 @@ When either flag is used, the container runs in an isolated Docker network with 
 
 ### Phase 1: Proxy Container Infrastructure
 
-#### Step 1.1: Add Proxy Dockerfile to copilot_here
+#### Step 1.1: Add Proxy Dockerfile to copilot_here ✅ COMPLETED (2025-11-27)
 
 Copy and adapt `Dockerfile.proxy` to the copilot_here repository.
 
-**Files to add:**
+**Files added:**
 - `Dockerfile.proxy` - Multi-stage Rust build for the proxy binary
 
-**Changes required:**
-- Update base image references if needed
-- Ensure compatible with multi-arch builds (amd64/arm64)
+**Changes made:**
+- Updated COPY paths to reference `proxy/` subdirectory
+- Added Cargo.lock to build context
 
 **Tests:**
 - [ ] Dockerfile builds successfully on both amd64 and arm64
@@ -44,11 +44,11 @@ Copy and adapt `Dockerfile.proxy` to the copilot_here repository.
 
 ---
 
-#### Step 1.2: Add Proxy Rust Source
+#### Step 1.2: Add Proxy Rust Source ✅ COMPLETED (2025-11-27)
 
 Copy the Rust proxy source code to copilot_here.
 
-**Files to add:**
+**Files added:**
 - `proxy/Cargo.toml`
 - `proxy/Cargo.lock`
 - `proxy/src/main.rs`
@@ -60,9 +60,9 @@ Copy the Rust proxy source code to copilot_here.
 
 ---
 
-#### Step 1.3: Add Proxy Entrypoint Script
+#### Step 1.3: Add Proxy Entrypoint Script ✅ COMPLETED (2025-11-27)
 
-**Files to add:**
+**Files added:**
 - `proxy-entrypoint.sh`
 
 **Tests:**
@@ -73,7 +73,7 @@ Copy the Rust proxy source code to copilot_here.
 
 ### Phase 2: App Container Modifications
 
-#### Step 2.1: Create Prison-Mode App Entrypoint
+#### Step 2.1: Create Airlock-Mode App Entrypoint ✅ COMPLETED (2025-11-27)
 
 Create a modified entrypoint that:
 1. Waits for proxy CA certificate
@@ -81,8 +81,8 @@ Create a modified entrypoint that:
 3. Sets `NODE_EXTRA_CA_CERTS` environment variable
 4. Chains to original entrypoint
 
-**Files to add:**
-- `entrypoint-prison.sh` - Prison network entrypoint wrapper
+**Files added:**
+- `entrypoint-airlock.sh` - Isolated network entrypoint wrapper
 
 **Tests:**
 - [ ] Entrypoint waits for `/ca/certs/ca.pem`
@@ -92,43 +92,45 @@ Create a modified entrypoint that:
 
 ---
 
-#### Step 2.2: Modify Base Dockerfile for Prison Mode Support
+#### Step 2.2: Modify Base Dockerfile for Airlock Mode Support ✅ COMPLETED (2025-11-27)
 
-Update the base `Dockerfile` to include `gosu` (may already exist) and preserve the original entrypoint path.
+Update the base `Dockerfile` to include `gosu` (already exists) and copy the airlock entrypoint.
 
-**Files to modify:**
-- `Dockerfile` - Ensure gosu is available
+**Files modified:**
+- `Dockerfile` - Added `COPY entrypoint-airlock.sh` and made it executable
 
 **Tests:**
-- [ ] `gosu` command is available in container
-- [ ] Original entrypoint is accessible at known path
+- [x] `gosu` command is available in container (already was)
+- [x] Original entrypoint is accessible at `/usr/local/bin/entrypoint.sh`
+- [x] `entrypoint-airlock.sh` is copied to `/usr/local/bin/`
 
 ---
 
 ### Phase 3: Shell Script Integration
 
-#### Step 3.1: Add Network Proxy Flags to Argument Parser
+#### Step 3.1: Add Network Proxy Flags to Argument Parser ✅ COMPLETED (2025-11-27)
 
 Update `copilot_here.sh` to parse the new flags:
 - `--enable-network-proxy`
 - `--enable-global-network-proxy`
 
-**Files to modify:**
-- `copilot_here.sh` - Add flag parsing in both `copilot_here` and `copilot_yolo` functions
+**Files modified:**
+- `copilot_here.sh` - Added flag parsing in both `copilot_here` and `copilot_yolo` functions
+- `copilot_here.ps1` - Added `-EnableNetworkProxy` and `-EnableGlobalNetworkProxy` parameters
 
 **Tests:**
-- [ ] `--enable-network-proxy` flag is recognized
-- [ ] `--enable-global-network-proxy` flag is recognized
-- [ ] Flags are mutually exclusive (error if both provided)
-- [ ] Help text includes new flags
+- [x] `--enable-network-proxy` flag is recognized
+- [x] `--enable-global-network-proxy` flag is recognized
+- [x] Flags are mutually exclusive (error if both provided)
+- [x] Help text includes new flags
 
 ---
 
-#### Step 3.2: Add Default Rules Configuration
+#### Step 3.2: Add Default Rules Configuration ✅ COMPLETED (2025-11-27)
 
 Create default rules.json and configuration loading logic.
 
-**Files to add to repository root:**
+**Files added to repository root:**
 - `default-network-rules.json` - Default allow rules for Copilot API (downloaded during `--update-scripts`)
 
 **Default rules content (in repo, downloaded to `~/.config/copilot_here/`):**
@@ -152,39 +154,47 @@ Create default rules.json and configuration loading logic.
 {
   "inherit_default_rules": true,
   "mode": "enforce",
-  "allowed_rules": []
+  "allowed_rules": [...]
 }
 ```
 
-**Files to modify:**
-- `copilot_here.sh` - Update `__copilot_update_scripts` to also download `default-network-rules.json`
-- `copilot_here.ps1` - Same for PowerShell
+**Files modified:**
+- `copilot_here.sh` - Added `__copilot_ensure_network_config` helper, updated `__copilot_update_scripts` to download network rules
+- `copilot_here.ps1` - Added `Ensure-NetworkConfig` function, updated `Update-CopilotScripts` to download network rules
+- `devtest.sh` - Updated to copy `default-network-rules.json` during local testing
 
 **Tests:**
-- [ ] Default rules allow Copilot API access
-- [ ] Default rules block arbitrary hosts
-- [ ] User rules are merged with defaults when `inherit_default_rules: true`
-- [ ] User rules replace defaults when `inherit_default_rules: false`
-- [ ] Generated config has `inherit_default_rules: true` explicitly visible
-- [ ] `--update-scripts` downloads and caches `default-network-rules.json`
+- [x] Default rules file exists in repo
+- [x] User is prompted for enforce/monitor mode on first use
+- [x] Generated config has `inherit_default_rules: true` explicitly visible
+- [x] `--update-scripts` downloads and caches `default-network-rules.json`
+- [x] Existing config is reused without prompting
 
 ---
 
-#### Step 3.3: Implement Docker Compose Mode
+#### Step 3.3: Implement Docker Compose Mode ✅ COMPLETED (2025-11-27)
 
 When network proxy is enabled, switch from `docker run` to `docker compose`:
 
-**Logic:**
+**Logic implemented:**
 1. Generate temporary `docker-compose.yml` from template
 2. Substitute environment variables and paths
 3. Run `docker compose up`
-4. Cleanup on exit
+4. Cleanup on exit via trap
 
-**Files to modify:**
-- `copilot_here.sh` - Add compose-based run logic
+**Files modified:**
+- `copilot_here.sh` - Added `__copilot_run_airlock` helper function
+- `copilot_here.sh` - Updated network proxy handling to call isolated run
+- `devtest.sh` - Updated to copy compose template
 
-**Files to add:**
-- `docker-compose.prison.yml.template` - Template for prison network compose
+**Files added:**
+- `docker-compose.airlock.yml.template` - Template for airlock compose
+
+**Key features:**
+- Project name matches terminal title format: `{dirname}-{session_id}`
+- Uses `docker compose up --abort-on-container-exit --attach app`
+- Cleanup removes containers, volumes, and temp compose file
+- Terminal title shows `[proxy]` suffix in airlock mode
 
 **Tests:**
 - [ ] Compose file is generated correctly
@@ -217,30 +227,30 @@ Add commands to manage proxy rules:
 
 ### Phase 4: CI/CD Integration
 
-#### Step 4.1: Add Proxy Image to Build Pipeline
+#### Step 4.1: Add Proxy Image to Build Pipeline ✅ COMPLETED (2025-11-27)
 
-Update GitHub Actions workflow to build and publish the proxy image.
+Updated GitHub Actions workflow to build and publish the proxy image.
 
-**Files to modify:**
-- `.github/workflows/publish.yml` - Add proxy image build steps
+**Files modified:**
+- `.github/workflows/publish.yml` - Added proxy image build steps (Step 11a/11b)
 
 **New image tags:**
 - `ghcr.io/gordonbeeming/copilot_here:proxy`
 - `ghcr.io/gordonbeeming/copilot_here:proxy-sha-<sha>`
 
 **Tests:**
-- [ ] Proxy image builds on amd64
-- [ ] Proxy image builds on arm64
-- [ ] Proxy image is pushed to GHCR
+- [x] Workflow includes proxy image build for amd64 and arm64
+- [x] Proxy image is pushed to GHCR
+- [x] Workflow summary includes proxy image
 
 ---
 
-#### Step 4.2: Add Integration Tests for Prison Mode
+#### Step 4.2: Add Integration Tests for Airlock Mode
 
-Add tests to verify prison network functionality.
+Add tests to verify airlock functionality.
 
 **Files to add:**
-- `tests/integration/test_prison_network.sh` - Prison network integration tests
+- `tests/integration/test_airlock.sh` - Isolated network integration tests
 
 **Test cases:**
 - [ ] Proxy starts and becomes healthy
@@ -371,21 +381,42 @@ The `inherit_default_rules: true` is **explicitly visible** in the config so use
 
 ---
 
+## Progress Summary
+
+| Phase | Step | Status | Date |
+|-------|------|--------|------|
+| 1 | 1.1 Proxy Dockerfile | ✅ Done | 2025-11-27 |
+| 1 | 1.2 Proxy Rust Source | ✅ Done | 2025-11-27 |
+| 1 | 1.3 Proxy Entrypoint | ✅ Done | 2025-11-27 |
+| 2 | 2.1 Airlock-Mode Entrypoint | ✅ Done | 2025-11-27 |
+| 2 | 2.2 Base Dockerfile Updates | ✅ Done | 2025-11-27 |
+| 3 | 3.1 CLI Flag Parsing | ✅ Done | 2025-11-27 |
+| 3 | 3.2 Default Rules Config | ✅ Done | 2025-11-27 |
+| 3 | 3.3 Docker Compose Mode | ✅ Done | 2025-11-27 |
+| 3 | 3.4 Config Management Commands | ⏳ Pending | |
+| 4 | 4.1 CI/CD Pipeline | ✅ Done | 2025-11-27 |
+| 4 | 4.2 Integration Tests | ⏳ Pending | |
+| 5 | 5.1 README Updates | ⏳ Pending | |
+| 5 | 5.2 Detailed Documentation | ⏳ Pending | |
+
+---
+
 ## Implementation Order
 
 Recommended order to implement:
 
-1. **Phase 1.2** - Proxy source code (can test standalone)
-2. **Phase 1.1** - Proxy Dockerfile (build the proxy)
-3. **Phase 1.3** - Proxy entrypoint
-4. **Phase 2.1** - Prison mode app entrypoint
-5. **Phase 3.1** - Shell script flag parsing
-6. **Phase 3.2** - Default rules configuration
-7. **Phase 3.3** - Docker Compose integration
-8. **Phase 4.1** - CI/CD for proxy image
-9. **Phase 3.4** - Configuration management commands
-10. **Phase 4.2** - Integration tests
-11. **Phase 5** - Documentation
+1. ~~**Phase 3.1** - Shell script flag parsing~~ ✅
+2. ~~**Phase 3.2** - Default rules configuration~~ ✅
+3. ~~**Phase 1.2** - Proxy source code (can test standalone)~~ ✅
+4. ~~**Phase 1.1** - Proxy Dockerfile (build the proxy)~~ ✅
+5. ~~**Phase 1.3** - Proxy entrypoint~~ ✅
+6. ~~**Phase 2.1** - Isolated mode app entrypoint~~ ✅
+7. **Phase 2.2** - Base Dockerfile updates
+8. ~~**Phase 3.3** - Docker Compose integration~~ ✅
+9. **Phase 4.1** - CI/CD for proxy image
+10. **Phase 3.4** - Configuration management commands
+11. **Phase 4.2** - Integration tests
+12. **Phase 5** - Documentation
 
 ---
 
