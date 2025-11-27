@@ -1,0 +1,59 @@
+# Prison Network - Docker Compose Configuration
+# The app container is on an isolated network and can ONLY reach the proxy.
+# The proxy bridges to the internet - no direct internet access from app.
+
+networks:
+  prison:
+    # Isolated network - no default route to internet
+    internal: true
+  bridge:
+    # Standard bridge network with internet access
+
+volumes:
+  proxy-ca:
+    # Shared CA certificate between proxy and app
+
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: "${COMPOSE_PROJECT_NAME:-prison}-proxy"
+    networks:
+      - prison    # Receives requests from app container
+      - bridge    # Makes outbound requests to internet
+    volumes:
+      - ./config:/config:ro
+      - ./logs:/logs
+      - proxy-ca:/ca
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:58080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    networks:
+      - prison    # ONLY on isolated network - cannot reach internet directly
+    environment:
+      - HTTP_PROXY=http://proxy:58080
+      - HTTPS_PROXY=http://proxy:58080
+      - http_proxy=http://proxy:58080
+      - https_proxy=http://proxy:58080
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - proxy-ca:/ca:ro
+      - ${COPILOT_CONFIG_PATH:-~/.config/copilot-cli-docker}:/home/appuser/.copilot
+      - ${HOST_WORK_DIR:-.}:${CONTAINER_WORK_DIR:-/work}
+    working_dir: ${CONTAINER_WORK_DIR:-/work}
+    depends_on:
+      proxy:
+        condition: service_started
+    stdin_open: true
+    tty: true

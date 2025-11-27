@@ -1,0 +1,41 @@
+{
+  "mode": "monitor",
+  "allowed_rules": [
+    {
+      "host": "github.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "api.github.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "copilot-proxy.githubusercontent.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "objects.githubusercontent.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "githubusercontent.com",
+      "allowed_paths": []
+    },
+    {
+      "host": "ghcr.io",
+      "allowed_paths": []
+    },
+    {
+      "host": "registry.npmjs.org",
+      "allowed_paths": []
+    },
+    {
+      "host": "pypi.org",
+      "allowed_paths": []
+    },
+    {
+      "host": "nuget.org",
+      "allowed_paths": []
+    }
+  ]
+}

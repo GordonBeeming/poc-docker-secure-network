@@ -1,6 +1,10 @@
 # Rust build artifacts
 rust-proxy/target/
+prison-network/target/
+
+# Cargo.lock for binaries (not libraries)
 rust-proxy/Cargo.lock
+prison-network/Cargo.lock
 
 # Node.js
 node_modules/
@@ -8,6 +12,7 @@ node_modules/
 # Logs
 logs/
 *.log
+*.jsonl
 
 # CA certificates (generated at runtime)
 /ca/
