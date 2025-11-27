@@ -241,15 +241,143 @@ copilot_here:dotnet-playwright-secure
 
 ---
 
+### Option 6: Prison Network (Dual-Network Proxy Container)
+
+**Approach:** Run a separate proxy container with two network interfaces. The copilot container is isolated on a "prison" network with no internet access - it can only reach the proxy. The proxy container bridges to the standard network to make outbound requests.
+
+```yaml
+networks:
+  prison:
+    # Isolated network - no default route to internet
+    internal: true
+  bridge:
+    # Standard bridge network with internet access
+
+services:
+  secure-proxy:
+    image: ghcr.io/gordonbeeming/copilot_here:proxy
+    networks:
+      - prison    # Receives requests from copilot container
+      - bridge    # Makes outbound requests to internet
+    volumes:
+      - ./rules.json:/config/rules.json:ro
+      - proxy-ca:/ca  # Share generated CA with copilot container
+
+  copilot:
+    image: ghcr.io/gordonbeeming/copilot_here:latest
+    networks:
+      - prison    # ONLY on isolated network - cannot reach internet directly
+    environment:
+      - HTTP_PROXY=http://secure-proxy:58080
+      - HTTPS_PROXY=http://secure-proxy:58080
+    volumes:
+      - proxy-ca:/ca:ro  # Trust the proxy's CA certificate
+    depends_on:
+      - secure-proxy
+
+volumes:
+  proxy-ca:
+```
+
+**Key Security Property:** If an application ignores `HTTP_PROXY`/`HTTPS_PROXY` environment variables, the request **fails completely** - there is no network path to the internet. The proxy is the only way out.
+
+**Pros:**
+
+| Category | Benefit |
+|----------|---------|
+| Integration | **No NET_ADMIN capability required** |
+| Integration | Network-level enforcement - apps cannot bypass proxy |
+| Integration | Works with any copilot_here image variant |
+| Integration | Proxy container can be long-running/shared |
+| Long-term | Clear separation of concerns |
+| Long-term | Proxy can be updated independently |
+| Long-term | Easier debugging - proxy logs are separate |
+
+**Cons:**
+
+| Category | Drawback |
+|----------|----------|
+| Integration | More complex setup (docker-compose required) |
+| Integration | Two containers instead of one |
+| Integration | CA certificate sharing via volume mount |
+| Integration | Requires MITM - must trust proxy CA |
+| Long-term | Container orchestration overhead |
+| Long-term | Network configuration can be confusing |
+
+---
+
+### Option 7: HTTP_PROXY Environment Variables (Simple Proxy)
+
+**Approach:** Run proxy as a separate container (or sidecar) and configure copilot container to use it via standard `HTTP_PROXY`/`HTTPS_PROXY` environment variables. Both containers are on the same network.
+
+```yaml
+services:
+  secure-proxy:
+    image: ghcr.io/gordonbeeming/copilot_here:proxy
+    volumes:
+      - ./rules.json:/config/rules.json:ro
+      - proxy-ca:/ca
+
+  copilot:
+    image: ghcr.io/gordonbeeming/copilot_here:latest
+    environment:
+      - HTTP_PROXY=http://secure-proxy:58080
+      - HTTPS_PROXY=http://secure-proxy:58080
+    volumes:
+      - proxy-ca:/ca:ro  # Trust the proxy's CA certificate
+    depends_on:
+      - secure-proxy
+
+volumes:
+  proxy-ca:
+```
+
+**Key Difference from Option 6:** The copilot container has normal internet access. The proxy is a **request**, not enforcement. Applications that ignore `HTTP_PROXY`/`HTTPS_PROXY` can still access the internet directly.
+
+**Pros:**
+
+| Category | Benefit |
+|----------|---------|
+| Integration | **No NET_ADMIN capability required** |
+| Integration | Simplest multi-container setup |
+| Integration | Works with any copilot_here image variant |
+| Integration | Standard proxy configuration - widely understood |
+| Long-term | Easy to add/remove proxy without changing image |
+| Long-term | Good for development/testing rules |
+
+**Cons:**
+
+| Category | Drawback |
+|----------|----------|
+| Integration | **Not enforced** - apps can bypass proxy |
+| Integration | Requires MITM - must trust proxy CA |
+| Integration | Less secure than network-level enforcement |
+| Long-term | Cannot guarantee all traffic goes through proxy |
+| Long-term | Security depends on application behavior |
+
+---
+
 ## Recommendation Matrix
 
-| Option | Complexity | Build Time Impact | User Experience | Maintenance | Recommended For |
-|--------|------------|-------------------|-----------------|-------------|-----------------|
-| 1. Standalone `:secure` | Medium | +3 min | Simple opt-in | Low | **Best balance** |
-| 2. Sidecar Pattern | High | None | Complex | Medium | Advanced users |
-| 3. Built into Base | Low | +3 min base | Seamless | Medium | Maximum simplicity |
-| 4. Pre-compiled Binary | Medium | Minimal | Medium | High | Fast builds priority |
-| 5. Hybrid Variants | Very High | +15 min | Complex choice | Very High | Not recommended |
+| Option | Complexity | Build Time Impact | User Experience | Maintenance | Security Level | Recommended For |
+|--------|------------|-------------------|-----------------|-------------|----------------|-----------------|
+| 1. Standalone `:secure` | Medium | +3 min | Simple opt-in | Low | High (iptables) | Best balance |
+| 2. Sidecar Pattern | High | None | Complex | Medium | High (iptables) | Advanced users |
+| 3. Built into Base | Low | +3 min base | Seamless | Medium | High (iptables) | Maximum simplicity |
+| 4. Pre-compiled Binary | Medium | Minimal | Medium | High | High (iptables) | Fast builds priority |
+| 5. Hybrid Variants | Very High | +15 min | Complex choice | Very High | High (iptables) | Not recommended |
+| 6. Prison Network | Medium | None | Compose-based | Low | **High (network isolation)** | **No NET_ADMIN needed** |
+| 7. HTTP_PROXY Simple | Low | None | Compose-based | Low | Medium (advisory) | Simple/dev setup |
+
+### Security Comparison: Options 1-5 vs 6 vs 7
+
+| Aspect | Options 1-5 (iptables) | Option 6 (Prison Network) | Option 7 (HTTP_PROXY) |
+|--------|------------------------|---------------------------|------------------------|
+| Enforcement | Kernel-level (iptables) | Network-level (no route) | Application-level (env var) |
+| Bypass possible? | No (requires root) | No (no network path) | Yes (ignore env vars) |
+| Requires NET_ADMIN | Yes | No | No |
+| Container count | 1 | 2 | 2 |
+| Setup complexity | Single container | Docker Compose | Docker Compose |
 
 ---
 
@@ -257,16 +385,27 @@ copilot_here:dotnet-playwright-secure
 
 ### Common Requirements (All Options)
 
-1. **Single Entrypoint**: There is only ONE entrypoint (`entrypoint.sh`) that handles both proxy setup and user command execution. The entrypoint:
-   - Sets up iptables network lock
+1. **Single Entrypoint** (Options 1-5): There is only ONE entrypoint (`entrypoint.sh`) that handles both proxy setup and user command execution. The entrypoint:
+   - Sets up iptables network lock (Options 1-5 only)
    - Starts the proxy (always runs)
    - Resolves and applies network config
    - Trusts the generated CA
    - Creates the user and executes the command
 
-2. **Capability Requirements**: All options require `NET_ADMIN` capability for iptables manipulation:
+2. **Capability Requirements**: Vary by option:
+
+   | Options | Requirement | Reason |
+   |---------|-------------|--------|
+   | 1-5 (iptables-based) | `--cap-add=NET_ADMIN` | Required for iptables manipulation |
+   | 6 (Prison Network) | None | Network isolation via Docker networks |
+   | 7 (HTTP_PROXY) | None | Standard proxy configuration |
+
    ```bash
+   # Options 1-5: Requires NET_ADMIN
    docker run --cap-add=NET_ADMIN ...
+   
+   # Options 6-7: No special capabilities needed
+   docker-compose up
    ```
 
 3. **Configuration Mount**: Network config is mounted read-only by default for security:
@@ -278,7 +417,9 @@ copilot_here:dotnet-playwright-secure
    docker run -v ./network.json:/work/.copilot_here/network.json:rw ...
    ```
 
-4. **CA Trust**: The proxy generates a CA certificate that must be trusted by the container's applications. This happens in the entrypoint via `update-ca-certificates`.
+4. **CA Trust**: The proxy generates a CA certificate that must be trusted by the container's applications:
+   - Options 1-5: Handled in entrypoint via `update-ca-certificates`
+   - Options 6-7: CA shared via Docker volume mount, trusted on container startup
 
 5. **Caching Considerations**: With Docker layer caching, the Rust build only re-runs when `Cargo.toml` or `src/` changes. This makes Option 1 and 3 more viable than initial build time suggests.
 
@@ -711,7 +852,11 @@ The proxy recognizes `mode: "allow-all"` as a special mode that bypasses all rul
 
 ## Updated Recommendation
 
-Given the "always running, config-driven rules" requirement, **Option 3 (Built into Base Image)** is the clear choice:
+With 7 options now available, the choice depends on your priorities:
+
+### If NET_ADMIN is acceptable (Options 1-5)
+
+**Option 3 (Built into Base Image)** remains the best choice for single-container simplicity:
 
 | Consideration | Impact |
 |---------------|--------|
@@ -722,40 +867,54 @@ Given the "always running, config-driven rules" requirement, **Option 3 (Built i
 | Layer caching | ✅ Rust binary cached, only rebuilds on changes |
 | Single entrypoint | ✅ One place to maintain config resolution logic |
 
-**Revised Recommendation:** **Option 3** with the configuration system described above.
+### If NET_ADMIN must be avoided
 
-### Updated Pros for Option 3
+**Option 6 (Prison Network)** provides equivalent security without kernel capabilities:
 
-| Category | Benefit |
-|----------|---------|
-| Integration | Single image covers all use cases |
-| Integration | Config-driven - no image tag selection |
-| Integration | Works with all existing variants (dotnet, playwright) automatically |
-| Integration | Always-running proxy provides consistent behavior |
-| Long-term | Consistent user experience |
-| Long-term | Easier version coordination (always in sync) |
-| Long-term | `inherit_defaults` enables push updates for allowed hosts |
-| Long-term | Simpler CI/CD pipeline |
-| Long-term | Secure logging protects audit integrity |
+| Consideration | Impact |
+|---------------|--------|
+| No NET_ADMIN required | ✅ Works in restricted environments |
+| Network-level enforcement | ✅ Apps cannot bypass proxy |
+| Separate proxy container | ✅ Can be long-running/shared |
+| Docker Compose setup | ⚠️ More complex than single container |
 
-### Updated Cons for Option 3
+**Option 7 (HTTP_PROXY Simple)** is a lighter alternative for development or less strict requirements:
 
-| Category | Drawback |
-|----------|----------|
-| Integration | Adds ~15-20MB to all images |
-| Integration | Increases base build time by ~2-3 min |
-| Integration | Requires `--cap-add=NET_ADMIN` when enabled |
-| Long-term | Base image becomes more complex |
-| Long-term | Must ship jq or similar for config merging |
+| Consideration | Impact |
+|---------------|--------|
+| No NET_ADMIN required | ✅ Works in restricted environments |
+| Simplest setup | ✅ Standard proxy configuration |
+| Not enforced | ⚠️ Apps can bypass if they ignore env vars |
+
+### Decision Matrix
+
+| Priority | Recommended Option |
+|----------|-------------------|
+| Single container + maximum security | **Option 3** (requires NET_ADMIN) |
+| No NET_ADMIN + maximum security | **Option 6** (Prison Network) |
+| No NET_ADMIN + simple setup | **Option 7** (HTTP_PROXY) |
+| Development/testing rules | **Option 7** (HTTP_PROXY) |
+
+### Potential Implementation Path
+
+You may want to support **two modes**:
+
+1. **Secure Light** (Option 7) - Simple HTTP_PROXY setup, advisory enforcement
+2. **Secure Full** (Option 6) - Prison network, enforced at network level
+
+This gives users a choice based on their security requirements and environment constraints.
 
 ---
 
 ## Next Steps
 
-1. Choose preferred option based on use case priorities
+1. Choose preferred option(s) based on use case priorities
 2. Implement config schema and CLI commands in copilot_here scripts
-3. Prototype the entrypoint integration with config resolution
+3. Prototype the chosen approach:
+   - For Options 1-5: Entrypoint integration with config resolution
+   - For Option 6: Docker Compose template with dual networks
+   - For Option 7: Docker Compose template with HTTP_PROXY
 4. Define built-in defaults list (allowed hosts for Copilot, npm, etc.)
 5. Test with real copilot_here workflows
 6. Document the chosen approach in copilot_here repo
-7. Add CI/CD pipeline steps for Rust binary compilation
+7. Add CI/CD pipeline steps for proxy image build
